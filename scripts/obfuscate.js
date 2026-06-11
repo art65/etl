@@ -267,122 +267,123 @@ function preprocessChineseWithAST(code) {
   }
 }
 
-try {
-  console.log(`📖 Reading file: ${inputFile}\n`);
-  let code = fs.readFileSync(inputFile, 'utf8');
-  stats.originalSize = code.length;
-  console.log(`   原始文件大小: ${(stats.originalSize / 1024).toFixed(2)} KB\n`);
-
-  // 第一步：使用 AST 安全处理中文标识符
-  code = preprocessChineseWithAST(code);
-  stats.afterChineseConversion = code.length;
-  
-  console.log(`✅ Step 1 完成！`);
-  console.log(`   转换后大小:   ${(stats.afterChineseConversion / 1024).toFixed(2)} KB`);
-  console.log(`   变化:        ${((stats.afterChineseConversion - stats.originalSize) / 1024).toFixed(2)} KB\n`);
-
-  // 第二步：使用 Terser 进行压缩
-  console.log('🔨 Step 2: Compressing with Terser...\n');
-  
-  let compressed = code;
-  let compressionApplied = false;
-  
+async function main() {
   try {
-    const terserOptions = {
-      compress: {
-        passes: 3,
-        pure_funcs: null,
-        pure_getters: true,
-        reduce_vars: true,
-        toplevel: true,
-        unsafe: true,
-        unsafe_methods: true,
-        unsafe_arrows: true,
-        unsafe_comps: true,
-        unsafe_Function: true,
-        unsafe_Regexp: true,
-        unused: true,
-        drop_console: false,
-        booleans: true,
-        conditionals: true,
-        dead_code: true,
-        evaluate: true,
-        if_return: true,
-        join_vars: true,
-        loops: true,
-        side_effects: true,
-        switches: true,
-        typeofs: false,
-      },
-      mangle: {
-        toplevel: true,
-        eval: true,
-        keep_fnames: false,
-        safari10: false,
-        properties: {
-          keep_quoted: true,
+    console.log(`📖 Reading file: ${inputFile}\n`);
+    let code = fs.readFileSync(inputFile, 'utf8');
+    stats.originalSize = code.length;
+    console.log(`   原始文件大小: ${(stats.originalSize / 1024).toFixed(2)} KB\n`);
+
+    // 第一步：使用 AST 安全处理中文标识符
+    code = preprocessChineseWithAST(code);
+    stats.afterChineseConversion = code.length;
+    
+    console.log(`✅ Step 1 完成！`);
+    console.log(`   转换后大小:   ${(stats.afterChineseConversion / 1024).toFixed(2)} KB`);
+    console.log(`   变化:        ${((stats.afterChineseConversion - stats.originalSize) / 1024).toFixed(2)} KB\n`);
+
+    // 第二步：使用 Terser 进行压缩
+    console.log('🔨 Step 2: Compressing with Terser...\n');
+    
+    let compressed = code;
+    let compressionApplied = false;
+    
+    try {
+      const terserOptions = {
+        compress: {
+          passes: 3,
+          pure_funcs: null,
+          pure_getters: true,
+          reduce_vars: true,
+          toplevel: true,
+          unsafe: true,
+          unsafe_methods: true,
+          unsafe_arrows: true,
+          unsafe_comps: true,
+          unsafe_Function: true,
+          unsafe_Regexp: true,
+          unused: true,
+          drop_console: false,
+          booleans: true,
+          conditionals: true,
+          dead_code: true,
+          evaluate: true,
+          if_return: true,
+          join_vars: true,
+          loops: true,
+          side_effects: true,
+          switches: true,
+          typeofs: false,
+        },
+        mangle: {
+          toplevel: true,
+          eval: true,
+          keep_fnames: false,
+          safari10: false,
+          properties: {
+            keep_quoted: true,
+          }
+        },
+        output: {
+          comments: false,
+          beautify: false,
         }
-      },
-      output: {
-        comments: false,
-        beautify: false,
+      };
+
+      console.log('   📋 Terser 配置已准备');
+      console.log(`   ℹ️  代码行数: ${code.split('\n').length}`);
+      console.log(`   ℹ️  代码大小: ${(code.length / 1024).toFixed(2)} KB\n`);
+
+      const result = await Terser.minify(code, terserOptions);
+
+      console.log('   🔍 Terser 返回结果:');
+      console.log(`   ℹ️  result.code: ${result.code ? `✓ (${result.code.length} bytes)` : '✗ undefined'}`);
+      console.log(`   ℹ️  result.error: ${result.error ? `✗ ${result.error.message}` : '✓ null'}`);
+      console.log(`   ℹ️  result.warnings: ${result.warnings && result.warnings.length > 0 ? `⚠️  ${result.warnings.length} warnings` : '✓ none'}\n`);
+
+      if (result.warnings && result.warnings.length > 0) {
+        console.log('   ⚠️  Warnings:');
+        result.warnings.forEach((w, i) => console.log(`      ${i + 1}. ${w}`));
+        console.log();
       }
-    };
 
-    console.log('   📋 Terser 配置已准备');
-    console.log(`   ℹ️  代码行数: ${code.split('\n').length}`);
-    console.log(`   ℹ️  代码大小: ${(code.length / 1024).toFixed(2)} KB\n`);
-
-    const result = Terser.minify(code, terserOptions);
-
-    console.log('   🔍 Terser 返回结果:');
-    console.log(`   ℹ️  result.code: ${result.code ? `✓ (${result.code.length} bytes)` : '✗ undefined'}`);
-    console.log(`   ℹ️  result.error: ${result.error ? `✗ ${result.error.message}` : '✓ null'}`);
-    console.log(`   ℹ️  result.warnings: ${result.warnings && result.warnings.length > 0 ? `⚠️  ${result.warnings.length} warnings` : '✓ none'}\n`);
-
-    if (result.warnings && result.warnings.length > 0) {
-      console.log('   ⚠️  Warnings:');
-      result.warnings.forEach((w, i) => console.log(`      ${i + 1}. ${w}`));
-      console.log();
-    }
-
-    if (result.error) {
-      console.warn('❌ Terser compression error:');
-      console.warn(`   Message: ${result.error.message}`);
-      console.warn(`   Code: ${result.error.code}`);
-      console.warn(`   Line: ${result.error.line}`);
+      if (result.error) {
+        console.warn('❌ Terser compression error:');
+        console.warn(`   Message: ${result.error.message}`);
+        console.warn(`   Code: ${result.error.code}`);
+        console.warn(`   Line: ${result.error.line}`);
+        console.warn('   Using non-compressed version instead...\n');
+      } else if (!result.code) {
+        console.warn('⚠️  Terser returned no code (code is undefined/null)');
+        console.warn('   Using non-compressed version instead...\n');
+      } else {
+        compressed = result.code;
+        compressionApplied = true;
+        console.log('✅ Terser compression successful\n');
+      }
+    } catch (terserError) {
+      console.warn('❌ Terser compression exception:');
+      console.warn(`   ${terserError.message}`);
+      if (terserError.stack) {
+        console.warn(`   Stack: ${terserError.stack.substring(0, 200)}...`);
+      }
       console.warn('   Using non-compressed version instead...\n');
-    } else if (!result.code) {
-      console.warn('⚠️  Terser returned no code (code is undefined/null)');
-      console.warn('   Using non-compressed version instead...\n');
-    } else {
-      compressed = result.code;
-      compressionApplied = true;
-      console.log('✅ Terser compression successful\n');
     }
-  } catch (terserError) {
-    console.warn('❌ Terser compression exception:');
-    console.warn(`   ${terserError.message}`);
-    if (terserError.stack) {
-      console.warn(`   Stack: ${terserError.stack.substring(0, 200)}...`);
-    }
-    console.warn('   Using non-compressed version instead...\n');
-  }
 
-  stats.afterTerserCompression = compressed.length;
+    stats.afterTerserCompression = compressed.length;
 
-  console.log(`✅ Step 2 完成！`);
-  console.log(`   压缩后大小:   ${(stats.afterTerserCompression / 1024).toFixed(2)} KB`);
-  console.log(`   变化:        ${((stats.afterTerserCompression - stats.afterChineseConversion) / 1024).toFixed(2)} KB`);
-  console.log(`   压缩效果:     ${compressionApplied ? '✓ 已启用' : '✗ 未启用'}\n`);
+    console.log(`✅ Step 2 完成！`);
+    console.log(`   压缩后大小:   ${(stats.afterTerserCompression / 1024).toFixed(2)} KB`);
+    console.log(`   变化:        ${((stats.afterTerserCompression - stats.afterChineseConversion) / 1024).toFixed(2)} KB`);
+    console.log(`   压缩效果:     ${compressionApplied ? '✓ 已启用' : '✗ 未启用'}\n`);
 
-  console.log(`💾 Writing to: ${outputFile}`);
-  fs.writeFileSync(outputFile, compressed, 'utf8');
+    console.log(`💾 Writing to: ${outputFile}`);
+    fs.writeFileSync(outputFile, compressed, 'utf8');
 
-  const finalSize = fs.statSync(outputFile).size;
-  const totalCompression = ((1 - finalSize / stats.originalSize) * 100).toFixed(2);
-  const step1Compression = ((1 - stats.afterChineseConversion / stats.originalSize) * 100).toFixed(2);
-  const step2Compression = ((1 - stats.afterTerserCompression / stats.afterChineseConversion) * 100).toFixed(2);
+    const finalSize = fs.statSync(outputFile).size;
+    const totalCompression = ((1 - finalSize / stats.originalSize) * 100).toFixed(2);
+    const step1Compression = ((1 - stats.afterChineseConversion / stats.originalSize) * 100).toFixed(2);
+    const step2Compression = ((1 - stats.afterTerserCompression / stats.afterChineseConversion) * 100).toFixed(2);
 
   console.log(`
 ✅ 全部完成！
@@ -420,8 +421,15 @@ try {
 ════════════════════════════════════════════════
   `);
 
-} catch (error) {
+  } catch (error) {
+    console.error('❌ 错误:', error.message);
+    console.error(error.stack);
+    process.exit(1);
+  }
+}
+
+main().catch((error) => {
   console.error('❌ 错误:', error.message);
   console.error(error.stack);
   process.exit(1);
-}
+});
