@@ -38,7 +38,6 @@ try {
     controlFlowFlattening: false, // 不使用控制流扁平化（会影响性能）
     deadCodeInjection: false,    // 不注入死代码（保持文件大小）
     debugProtection: false,      // 不添加调试保护
-    debugProtectionInterval: false,
     identifierNamesGenerator: 'hexadecimal', // 使用16进制标识符
     log: false,
     renameGlobals: false,        // 不重命名全局变量（保证 Worker API 可用）
