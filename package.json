@@ -1,0 +1,11 @@
+{
+  "name": "etl",
+  "version": "1.0.0",
+  "description": "edgetunnel2 VLESS/Trojan/SS multi-function panel",
+  "scripts": {
+    "obfuscate": "node scripts/obfuscate.js _worker.js"
+  },
+  "devDependencies": {
+    "javascript-obfuscator": "^4.1.1"
+  }
+}
