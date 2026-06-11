@@ -301,7 +301,7 @@ async function main() {
           unsafe_arrows: true,
           unsafe_comps: true,
           unsafe_Function: true,
-          unsafe_Regexp: true,
+          unsafe_Regexp: false,
           unused: true,
           drop_console: false,
           booleans: true,
