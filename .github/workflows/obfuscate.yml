@@ -16,54 +16,41 @@ jobs:
     if: ${{ github.event.repository.fork }}
 
     steps:
-      # Step 1: Checkout target repo
       - name: Checkout target repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Step 2: Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      # Step 3: Install dependencies
       - name: Install dependencies
-        run: npm install javascript-obfuscator
+        run: npm install @babel/parser @babel/traverse @babel/generator @babel/types terser
 
-      # Step 4: Obfuscate and compress _worker.js
       - name: Obfuscate and compress _worker.js
         run: |
           if [ -f "_worker.js" ]; then
             echo "📦 Found _worker.js, starting obfuscation..."
             node scripts/obfuscate.js _worker.js _worker.min.js
             echo "✅ Obfuscation completed"
+            echo "📄 Generated: _worker.min.js"
           else
             echo "⚠️  _worker.js not found, skipping obfuscation"
             exit 0
           fi
 
-      # Step 5: Replace original file
-      - name: Replace original file
-        run: |
-          if [ -f "_worker.min.js" ]; then
-            mv _worker.min.js _worker.js
-            echo "✅ Replaced _worker.js with obfuscated version"
-          fi
-
-      # Step 6: Commit and push changes
-      - name: Commit and push obfuscated changes
+      - name: Commit and push compressed file
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # Check if there are changes
-          if [ -n "$(git status --porcelain)" ]; then
-            git add _worker.js
-            git commit -m "🔀 Obfuscate and compress _worker.js [skip ci]" || true
+          if [ -f "_worker.min.js" ]; then
+            git add _worker.min.js
+            git commit -m "🔀 Add obfuscated _worker.min.js [skip ci]" || true
             git push origin main || true
-            echo "✅ Changes committed and pushed"
+            echo "✅ Compressed file committed and pushed"
           else
-            echo "ℹ️  No changes to commit"
+            echo "⚠️  No compressed file generated"
           fi
