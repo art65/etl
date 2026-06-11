@@ -300,22 +300,22 @@ async function main() {
     try {
       const terserOptions = {
         compress: {
-          passes: 1,
+          passes: 2,
           pure_funcs: null,
           pure_getters: false,
           reduce_vars: false,
           toplevel: false,
           unused: true,
           drop_console: false,
-          booleans: false,
-          conditionals: false,
+          booleans: true,
+          conditionals: true,
           dead_code: true,
           evaluate: false,
           if_return: true,
           join_vars: false,
-          loops: false,
-          side_effects: false,
-          switches: false,
+          loops: true,
+          side_effects: true,
+          switches: true,
           typeofs: false,
         },
         mangle: {
