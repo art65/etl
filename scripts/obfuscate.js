@@ -250,10 +250,12 @@ function preprocessChineseWithAST(code) {
       }
     });
 
-    // 生成新的代码
+    // 生成新的代码 - 使用紧凑格式
     const { code: generatedCode } = generate(ast, {
-      compact: false,
-      minified: false
+      compact: 'auto',
+      minified: true,
+      retainLines: false,
+      shouldPrintComment: () => false
     });
 
     console.log(`\n   📊 Converted unique variables: ${chineseVarMap.size}`);
@@ -286,7 +288,7 @@ try {
   let compressionApplied = false;
   
   try {
-    const result = Terser.minify(code, {
+    const terserOptions = {
       compress: {
         passes: 3,
         pure_funcs: null,
@@ -295,6 +297,10 @@ try {
         toplevel: true,
         unsafe: true,
         unsafe_methods: true,
+        unsafe_arrows: true,
+        unsafe_comps: true,
+        unsafe_Function: true,
+        unsafe_Regexp: true,
         unused: true,
         drop_console: false,
         booleans: true,
@@ -321,13 +327,33 @@ try {
         comments: false,
         beautify: false,
       }
-    });
+    };
+
+    console.log('   📋 Terser 配置已准备');
+    console.log(`   ℹ️  代码行数: ${code.split('\n').length}`);
+    console.log(`   ℹ️  代码大小: ${(code.length / 1024).toFixed(2)} KB\n`);
+
+    const result = Terser.minify(code, terserOptions);
+
+    console.log('   🔍 Terser 返回结果:');
+    console.log(`   ℹ️  result.code: ${result.code ? `✓ (${result.code.length} bytes)` : '✗ undefined'}`);
+    console.log(`   ℹ️  result.error: ${result.error ? `✗ ${result.error.message}` : '✓ null'}`);
+    console.log(`   ℹ️  result.warnings: ${result.warnings && result.warnings.length > 0 ? `⚠️  ${result.warnings.length} warnings` : '✓ none'}\n`);
+
+    if (result.warnings && result.warnings.length > 0) {
+      console.log('   ⚠️  Warnings:');
+      result.warnings.forEach((w, i) => console.log(`      ${i + 1}. ${w}`));
+      console.log();
+    }
 
     if (result.error) {
-      console.warn('⚠️  Terser compression error:', result.error.message);
+      console.warn('❌ Terser compression error:');
+      console.warn(`   Message: ${result.error.message}`);
+      console.warn(`   Code: ${result.error.code}`);
+      console.warn(`   Line: ${result.error.line}`);
       console.warn('   Using non-compressed version instead...\n');
     } else if (!result.code) {
-      console.warn('⚠️  Terser returned no code');
+      console.warn('⚠️  Terser returned no code (code is undefined/null)');
       console.warn('   Using non-compressed version instead...\n');
     } else {
       compressed = result.code;
@@ -335,7 +361,11 @@ try {
       console.log('✅ Terser compression successful\n');
     }
   } catch (terserError) {
-    console.warn('⚠️  Terser compression failed:', terserError.message);
+    console.warn('❌ Terser compression exception:');
+    console.warn(`   ${terserError.message}`);
+    if (terserError.stack) {
+      console.warn(`   Stack: ${terserError.stack.substring(0, 200)}...`);
+    }
     console.warn('   Using non-compressed version instead...\n');
   }
 
@@ -386,6 +416,7 @@ try {
    ✓ 中文标识符转换
    ✓ 死代码消除
    ✓ 多轮优化 (3 passes)
+   ✓ 激进模式（更强压缩）
 ════════════════════════════════════════════════
   `);
 
