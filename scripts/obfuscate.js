@@ -52,14 +52,14 @@ function preprocessChineseWithAST(code) {
   console.log('🔤 Step 1: Converting Chinese identifiers using AST...\n');
 
   try {
-    // 解析代码为 AST
+    // 解析代码为 AST（简化插件配置，只启用必要的插件）
     const ast = parser.parse(code, {
       sourceType: 'module',
       allowImportExportEverywhere: true,
       allowReturnOutsideFunction: true,
       plugins: [
         'jsx',
-        'typescript',
+        ['typescript', { dts: true }],
         'classProperties',
         'classPrivateProperties',
         'classPrivateMethods',
@@ -68,22 +68,14 @@ function preprocessChineseWithAST(code) {
         'logicalAssignment',
         'optionalChaining',
         'nullishCoalescingOperator',
-        'partialApplication',
-        ['decorators', { decoratorsBeforeExport: false }],
-        'dynamicImport',
-        'importMeta',
         'asyncGenerators',
         'functionBind',
         'functionSent',
-        'logicalAssignment',
-        'optionalChaining',
-        'partialApplication',
-        'pipelineOperator',
-        'recordAndTuple',
-        ['recordAndTuple', { syntaxType: 'hash' }],
-        'throwExpressions',
+        'dynamicImport',
+        ['decorators', { decoratorsBeforeExport: false }],
+        'importMeta',
         'topLevelAwait',
-        'v8intrinsic'
+        'partialApplication'
       ]
     });
 
