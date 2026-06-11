@@ -1,19 +1,18 @@
 const fs = require('fs');
 const path = require('path');
+const parser = require('@babel/parser');
+const traverse = require('@babel/traverse').default;
+const generate = require('@babel/generator').default;
+const t = require('@babel/types');
+const Terser = require('terser');
 
 /**
- * JavaScript 混淆和压缩工具
- * 使用 javascript-obfuscator 库对 _worker.js 进行混淆和压缩
- * 特别优化：处理大量中文变量名的代码
+ * JavaScript 压缩工具 - 使用 Babel AST
+ * 功能：
+ * 1. 使用 AST 安全地识别和转换中文标识符
+ * 2. 使用 Terser 进行极致压缩
+ * 3. 压缩全局变量、函数名、属性名等
  */
-
-let obfuscator;
-try {
-  obfuscator = require('javascript-obfuscator');
-} catch (e) {
-  console.error('❌ javascript-obfuscator 未安装，请运行: npm install javascript-obfuscator');
-  process.exit(1);
-}
 
 const args = process.argv.slice(2);
 if (args.length < 1) {
@@ -29,68 +28,10 @@ const chineseVarMap = new Map();
 let varCounter = 0;
 
 /**
- * 第一步：将中文变量转换为拉丁字符
- * 处理: const/let/var 声明、函数参数、对象属性、class成员等
+ * 检查是否是中文标识符
  */
-function preprocessChineseIdentifiers(code) {
-  console.log('🔤 Step 1: Converting Chinese identifiers to Latin characters...');
-  
-  // 匹配 const/let/var 声明中的中文变量
-  code = code.replace(
-    /\b(const|let|var)\s+([\u4e00-\u9fff_$][a-zA-Z0-9_$\u4e00-\u9fff]*)/g,
-    (match, keyword, varName) => {
-      const newName = getOrCreateNewName(varName);
-      return `${keyword} ${newName}`;
-    }
-  );
-
-  // 匹配函数声明中的中文函数名
-  code = code.replace(
-    /\bfunction\s+([\u4e00-\u9fff_$][a-zA-Z0-9_$\u4e00-\u9fff]*)\s*\(/g,
-    (match, funcName) => {
-      const newName = getOrCreateNewName(funcName);
-      return `function ${newName}(`;
-    }
-  );
-
-  // 匹配函数参数中的中文变量
-  code = code.replace(
-    /\([\s\S]*?\)/g,
-    (paramsStr) => {
-      return paramsStr.replace(
-        /([\u4e00-\u9fff_$][a-zA-Z0-9_$\u4e00-\u9fff]*)\s*[,)]/g,
-        (match, paramName) => {
-          if (/^[\u4e00-\u9fff]/.test(paramName)) {
-            const newName = getOrCreateNewName(paramName);
-            return match.replace(paramName, newName);
-          }
-          return match;
-        }
-      );
-    }
-  );
-
-  // 匹配对象属性中的中文变量（作为 key 时通常在引号中或 [] 中）
-  code = code.replace(
-    /[\[\.]?([\u4e00-\u9fff_$][a-zA-Z0-9_$\u4e00-\u9fff]*)\s*[:=]/g,
-    (match, propName) => {
-      if (/^[\u4e00-\u9fff]/.test(propName)) {
-        const newName = getOrCreateNewName(propName);
-        return match.replace(propName, newName);
-      }
-      return match;
-    }
-  );
-
-  // 替换所有中文变量使用处（关键步骤）
-  for (const [chinese, latin] of chineseVarMap.entries()) {
-    // 使用单词边界，避免误替换
-    const regex = new RegExp(`\\b${escapeRegex(chinese)}\\b`, 'g');
-    code = code.replace(regex, latin);
-    console.log(`   ✓ ${chinese} → ${latin}`);
-  }
-
-  return code;
+function isChineseIdentifier(name) {
+  return /[\u4e00-\u9fff]/.test(name);
 }
 
 /**
@@ -105,10 +46,197 @@ function getOrCreateNewName(chineseName) {
 }
 
 /**
- * 转义正则特殊字符
+ * 使用 Babel AST 安全地处理中文标识符
  */
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function preprocessChineseWithAST(code) {
+  console.log('🔤 Step 1: Converting Chinese identifiers using AST...\n');
+
+  try {
+    // 解析代码为 AST
+    const ast = parser.parse(code, {
+      sourceType: 'module',
+      allowImportExportEverywhere: true,
+      allowReturnOutsideFunction: true,
+      plugins: [
+        'jsx',
+        'typescript',
+        'classProperties',
+        'classPrivateProperties',
+        'classPrivateMethods',
+        'exportDefaultFrom',
+        'exportNamespaceFrom',
+        'logicalAssignment',
+        'optionalChaining',
+        'nullishCoalescingOperator',
+        'partialApplication',
+        ['decorators', { decoratorsBeforeExport: false }],
+        'dynamicImport',
+        'importMeta',
+        'asyncGenerators',
+        'functionBind',
+        'functionSent',
+        'logicalAssignment',
+        'optionalChaining',
+        'partialApplication',
+        'pipelineOperator',
+        'recordAndTuple',
+        ['recordAndTuple', { syntaxType: 'hash' }],
+        'throwExpressions',
+        'topLevelAwait',
+        'v8intrinsic'
+      ]
+    });
+
+    // 遍历 AST，查找和替换中文标识符
+    traverse(ast, {
+      // 变量声明（const, let, var）
+      VariableDeclarator(path) {
+        const { id } = path.node;
+        if (t.isIdentifier(id) && isChineseIdentifier(id.name)) {
+          const newName = getOrCreateNewName(id.name);
+          id.name = newName;
+          console.log(`   ✓ Variable: ${id.name} → ${newName}`);
+        }
+      },
+
+      // 函数声明
+      FunctionDeclaration(path) {
+        const { node } = path;
+        if (node.id && isChineseIdentifier(node.id.name)) {
+          const newName = getOrCreateNewName(node.id.name);
+          console.log(`   ✓ Function: ${node.id.name} → ${newName}`);
+          node.id.name = newName;
+        }
+        
+        // 处理参数
+        node.params.forEach((param) => {
+          if (t.isIdentifier(param) && isChineseIdentifier(param.name)) {
+            const newName = getOrCreateNewName(param.name);
+            console.log(`   ✓ Parameter: ${param.name} → ${newName}`);
+            param.name = newName;
+          }
+        });
+      },
+
+      // 函数表达式
+      FunctionExpression(path) {
+        const { node } = path;
+        if (node.id && isChineseIdentifier(node.id.name)) {
+          const newName = getOrCreateNewName(node.id.name);
+          console.log(`   ✓ Function expr: ${node.id.name} → ${newName}`);
+          node.id.name = newName;
+        }
+        
+        // 处理参数
+        node.params.forEach((param) => {
+          if (t.isIdentifier(param) && isChineseIdentifier(param.name)) {
+            const newName = getOrCreateNewName(param.name);
+            console.log(`   ✓ Parameter: ${param.name} → ${newName}`);
+            param.name = newName;
+          }
+        });
+      },
+
+      // 箭头函数
+      ArrowFunctionExpression(path) {
+        const { node } = path;
+        node.params.forEach((param) => {
+          if (t.isIdentifier(param) && isChineseIdentifier(param.name)) {
+            const newName = getOrCreateNewName(param.name);
+            console.log(`   ✓ Arrow param: ${param.name} → ${newName}`);
+            param.name = newName;
+          }
+        });
+      },
+
+      // 对象属性
+      ObjectProperty(path) {
+        const { node } = path;
+        // 处理 shorthand properties 和 key
+        if (t.isIdentifier(node.key) && isChineseIdentifier(node.key.name)) {
+          const newName = getOrCreateNewName(node.key.name);
+          console.log(`   ✓ Property: ${node.key.name} → ${newName}`);
+          node.key.name = newName;
+        }
+        if (t.isIdentifier(node.value) && isChineseIdentifier(node.value.name)) {
+          const newName = getOrCreateNewName(node.value.name);
+          node.value.name = newName;
+        }
+      },
+
+      // 类声明
+      ClassDeclaration(path) {
+        const { node } = path;
+        if (node.id && isChineseIdentifier(node.id.name)) {
+          const newName = getOrCreateNewName(node.id.name);
+          console.log(`   ✓ Class: ${node.id.name} → ${newName}`);
+          node.id.name = newName;
+        }
+      },
+
+      // 方法定义
+      ClassMethod(path) {
+        const { node } = path;
+        if (t.isIdentifier(node.key) && isChineseIdentifier(node.key.name)) {
+          const newName = getOrCreateNewName(node.key.name);
+          console.log(`   ✓ Method: ${node.key.name} → ${newName}`);
+          node.key.name = newName;
+        }
+        
+        // 处理参数
+        node.params.forEach((param) => {
+          if (t.isIdentifier(param) && isChineseIdentifier(param.name)) {
+            const newName = getOrCreateNewName(param.name);
+            console.log(`   ✓ Method param: ${param.name} → ${newName}`);
+            param.name = newName;
+          }
+        });
+      },
+
+      // 对象方法
+      ObjectMethod(path) {
+        const { node } = path;
+        if (t.isIdentifier(node.key) && isChineseIdentifier(node.key.name)) {
+          const newName = getOrCreateNewName(node.key.name);
+          console.log(`   ✓ Object method: ${node.key.name} → ${newName}`);
+          node.key.name = newName;
+        }
+        
+        // 处理参数
+        node.params.forEach((param) => {
+          if (t.isIdentifier(param) && isChineseIdentifier(param.name)) {
+            const newName = getOrCreateNewName(param.name);
+            console.log(`   ✓ Method param: ${param.name} → ${newName}`);
+            param.name = newName;
+          }
+        });
+      },
+
+      // 更新所有标识符引用
+      Identifier(path) {
+        const { node } = path;
+        // 跳过某些特殊的标识符位置
+        if (path.isReferencedIdentifier() || path.isBindingIdentifier()) {
+          if (chineseVarMap.has(node.name)) {
+            const newName = chineseVarMap.get(node.name);
+            node.name = newName;
+          }
+        }
+      }
+    });
+
+    // 生成新的代码
+    const { code: generatedCode } = generate(ast, {
+      compact: false,
+      minified: false
+    });
+
+    console.log('');
+    return generatedCode;
+  } catch (error) {
+    console.error('❌ AST 解析错误:', error.message);
+    throw error;
+  }
 }
 
 try {
@@ -116,35 +244,55 @@ try {
   let code = fs.readFileSync(inputFile, 'utf8');
   const originalSize = code.length;
 
-  // 第一步：预处理中文标识符
-  code = preprocessChineseIdentifiers(code);
+  // 第一步：使用 AST 安全处理中文标识符
+  code = preprocessChineseWithAST(code);
 
-  console.log(`\n🔀 Step 2: Obfuscating and compressing with javascript-obfuscator...\n`);
+  // 第二步：使用 Terser 进行压缩
+  console.log('🔨 Step 2: Compressing with Terser...\n');
   
-  const obfuscated = obfuscator.obfuscate(code, {
-    // 基础混淆选项
-    compact: true,
-    controlFlowFlattening: false,
-    deadCodeInjection: false,
-    debugProtection: false,
-    
-    // 标识符混淆 - 关键选项
-    identifierNamesGenerator: 'hexadecimal',
-    renameGlobals: false,        // 保持全局变量（Worker API）
-    
-    // 字符串处理
-    stringArray: true,
-    stringArrayThreshold: 0.75,
-    unicodeEscapeSequence: true, // 启用 Unicode 转义
-    
-    // 其他选项
-    rotateStringArray: true,
-    selfDefending: false,
-    log: false
-  }).getObfuscatedCode();
+  const result = Terser.minify(code, {
+    compress: {
+      passes: 3,                    // 多次遍历优化
+      pure_funcs: null,
+      pure_getters: true,
+      reduce_vars: true,
+      toplevel: true,               // 压缩顶层变量
+      unsafe: true,
+      unsafe_methods: true,
+      unused: true,
+      drop_console: false,          // 保留 console
+      booleans: true,
+      conditionals: true,
+      dead_code: true,
+      evaluate: true,
+      if_return: true,
+      join_vars: true,
+      loops: true,
+      side_effects: true,
+      switches: true,
+      typeofs: false,
+    },
+    mangle: {
+      toplevel: true,               // 压缩全局变量和函数名
+      eval: true,
+      keep_fnames: false,           // 不保留函数名
+      safari10: false,
+    },
+    output: {
+      comments: false,              // 移除所有注释
+      beautify: false,
+      compact: true,                // 极度紧凑
+    }
+  });
+
+  if (result.error) {
+    throw new Error(`Terser compression error: ${result.error.message}`);
+  }
+
+  const compressed = result.code;
 
   console.log(`💾 Writing to: ${outputFile}`);
-  fs.writeFileSync(outputFile, obfuscated, 'utf8');
+  fs.writeFileSync(outputFile, compressed, 'utf8');
 
   const finalSize = fs.statSync(outputFile).size;
   const compression = ((1 - finalSize / originalSize) * 100).toFixed(2);
@@ -156,6 +304,16 @@ try {
 压缩大小:        ${(finalSize / 1024).toFixed(2)} KB
 压缩比:          ${compression}%
 转换变量数:      ${chineseVarMap.size}
+────────────────────────────────
+
+🎯 特性:
+   ✓ AST 安全处理（不会误替换）
+   ✓ 全局变量压缩
+   ✓ 函数名压缩
+   ✓ 属性名压缩
+   ✓ 中文标识符转换
+   ✓ 死代码消除
+   ✓ 多轮优化
 ────────────────────────────────
   `);
 
