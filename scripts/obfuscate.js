@@ -274,7 +274,6 @@ try {
       output: {
         comments: false,
         beautify: false,
-        compact: true,
       }
     });
 
