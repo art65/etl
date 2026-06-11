@@ -241,46 +241,57 @@ try {
   // 第二步：使用 Terser 进行压缩
   console.log('🔨 Step 2: Compressing with Terser...\n');
   
-  const result = Terser.minify(code, {
-    compress: {
-      passes: 3,                    // 多次遍历优化
-      pure_funcs: null,
-      pure_getters: true,
-      reduce_vars: true,
-      toplevel: true,               // 压缩顶层变量
-      unsafe: true,
-      unsafe_methods: true,
-      unused: true,
-      drop_console: false,          // 保留 console
-      booleans: true,
-      conditionals: true,
-      dead_code: true,
-      evaluate: true,
-      if_return: true,
-      join_vars: true,
-      loops: true,
-      side_effects: true,
-      switches: true,
-      typeofs: false,
-    },
-    mangle: {
-      toplevel: true,               // 压缩全局变量和函数名
-      eval: true,
-      keep_fnames: false,           // 不保留函数名
-      safari10: false,
-    },
-    output: {
-      comments: false,              // 移除所有注释
-      beautify: false,
-      compact: true,                // 极度紧凑
+  let compressed = code;
+  try {
+    const result = Terser.minify(code, {
+      compress: {
+        passes: 3,
+        pure_funcs: null,
+        pure_getters: true,
+        reduce_vars: true,
+        toplevel: true,
+        unsafe: true,
+        unsafe_methods: true,
+        unused: true,
+        drop_console: false,
+        booleans: true,
+        conditionals: true,
+        dead_code: true,
+        evaluate: true,
+        if_return: true,
+        join_vars: true,
+        loops: true,
+        side_effects: true,
+        switches: true,
+        typeofs: false,
+      },
+      mangle: {
+        toplevel: true,
+        eval: true,
+        keep_fnames: false,
+        safari10: false,
+      },
+      output: {
+        comments: false,
+        beautify: false,
+        compact: true,
+      }
+    });
+
+    if (result.error) {
+      console.warn('⚠️  Terser compression error:', result.error.message);
+      console.warn('   Using non-compressed version instead...\n');
+    } else if (!result.code) {
+      console.warn('⚠️  Terser returned no code');
+      console.warn('   Using non-compressed version instead...\n');
+    } else {
+      compressed = result.code;
+      console.log('✅ Terser compression successful\n');
     }
-  });
-
-  if (result.error) {
-    throw new Error(`Terser compression error: ${result.error.message}`);
+  } catch (terserError) {
+    console.warn('⚠️  Terser compression failed:', terserError.message);
+    console.warn('   Using non-compressed version instead...\n');
   }
-
-  const compressed = result.code;
 
   console.log(`💾 Writing to: ${outputFile}`);
   fs.writeFileSync(outputFile, compressed, 'utf8');
@@ -292,7 +303,7 @@ try {
 ✅ 完成！
 ────────────────────────────────
 原始大小:        ${(originalSize / 1024).toFixed(2)} KB
-压缩大小:        ${(finalSize / 1024).toFixed(2)} KB
+输出大小:        ${(finalSize / 1024).toFixed(2)} KB
 压缩比:          ${compression}%
 转换变量数:      ${chineseVarMap.size}
 ────────────────────────────────
