@@ -239,13 +239,11 @@ function preprocessChineseWithAST(code) {
       // 更新所有标识符引用
       Identifier(path) {
         const { node } = path;
-        // 跳过某些特殊的标识符位置
-        if (path.isReferencedIdentifier() || path.isBindingIdentifier()) {
-          if (chineseVarMap.has(node.name)) {
-            const newName = chineseVarMap.get(node.name);
-            node.name = newName;
-            stats.totalIdentifiersReplaced++;
-          }
+        // 无条件检查所有中文标识符
+        if (chineseVarMap.has(node.name)) {
+          const newName = chineseVarMap.get(node.name);
+          node.name = newName;
+          stats.totalIdentifiersReplaced++;
         }
       }
     });
