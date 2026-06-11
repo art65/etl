@@ -248,6 +248,17 @@ function preprocessChineseWithAST(code) {
       }
     });
 
+    // 第二遍扫描：确保所有引用都被替换
+    // （Babel遍历顺序可能导致第一次扫描时某些引用还没被收集）
+    traverse(ast, {
+      Identifier(path) {
+        const { node } = path;
+        if (chineseVarMap.has(node.name)) {
+          node.name = chineseVarMap.get(node.name);
+        }
+      }
+    });
+
     // 生成新的代码 - 使用紧凑格式
     const { code: generatedCode } = generate(ast, {
       compact: 'auto',
