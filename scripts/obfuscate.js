@@ -52,14 +52,13 @@ function preprocessChineseWithAST(code) {
   console.log('🔤 Step 1: Converting Chinese identifiers using AST...\n');
 
   try {
-    // 解析代码为 AST（简化插件配置，只启用必要的插件）
+    // 解析代码为 AST（禁用 TypeScript）
     const ast = parser.parse(code, {
       sourceType: 'module',
       allowImportExportEverywhere: true,
       allowReturnOutsideFunction: true,
       plugins: [
         'jsx',
-        ['typescript', { dts: true }],
         'classProperties',
         'classPrivateProperties',
         'classPrivateMethods',
