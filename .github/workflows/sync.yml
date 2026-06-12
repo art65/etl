@@ -38,3 +38,22 @@ jobs:
           echo "[Error] 由于上游仓库的 workflow 文件变更，导致 GitHub 自动暂停了本次自动更新，你需要手动 Sync Fork 一次，详细教程请查看项目README.md "
           echo "[Error] Due to a change in the workflow file of the upstream repository, GitHub has automatically suspended the scheduled automatic update. You need to manually sync your fork. Please refer to the project README.md for instructions. "
           exit 1
+
+      - name: Auto resolve conflicts - prefer upstream
+        if: always()
+        run: |
+          # Add upstream remote if not exists
+          if ! git remote get-url upstream >/dev/null 2>&1; then
+            git remote add upstream https://github.com/cmliu/edgetunnel.git
+          fi
+          git fetch upstream
+          
+          # Check if there are merge conflicts
+          if git ls-files -u | grep -q .; then
+            echo "🔀 Detected merge conflicts, using upstream version..."
+            # Abort the merge
+            git merge --abort || true
+            # Reset to upstream
+            git reset --hard upstream/main
+            git push --force origin main || true
+          fi
