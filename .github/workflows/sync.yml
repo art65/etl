@@ -2,7 +2,6 @@ name: Upstream Sync
 
 permissions:
   contents: write
-  workflows: write
 
 on:
   schedule:
@@ -29,6 +28,7 @@ jobs:
           upstream_sync_branch: main
           target_sync_branch: main
           target_repo_token: ${{ secrets.GITHUB_TOKEN }} # automatically generated, no need to set
+          upstream_pull_args: --allow-unrelated-histories -X theirs
 
           # Set test_mode true to run tests instead of the true action!!
           test_mode: false
@@ -36,15 +36,4 @@ jobs:
       - name: Sync check
         if: failure()
         run: |
-          echo "[Error] 同步失败，尝试强制使用上游版本..."
-
-      - name: Auto resolve conflicts - prefer upstream
-        if: failure()
-        run: |
-          echo "Sync failed, forcing upstream version..."
-          git remote add upstream https://github.com/cmliu/edgetunnel.git || true
-          git fetch upstream
-          git reset --hard upstream/main
-          git config user.name "GitHub Action"
-          git config user.email "action@github.com"
-          git push --force https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git main
+          echo "[Error] 同步失败，请手动处理"
