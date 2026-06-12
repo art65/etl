@@ -35,24 +35,12 @@ jobs:
       - name: Sync check
         if: failure()
         run: |
-          echo "[Error] 检测到同步失败，检查是否有冲突..."
-          echo "[Info] 将尝试自动解决冲突，使用上游版本..."
+          echo "[Error] 同步失败，尝试强制使用上游版本..."
 
       - name: Auto resolve conflicts - prefer upstream
-        if: always()
+        if: failure()
         run: |
-          # Add upstream remote if not exists
-          if ! git remote get-url upstream >/dev/null 2>&1; then
-            git remote add upstream https://github.com/cmliu/edgetunnel.git
-          fi
+          git remote add upstream https://github.com/cmliu/edgetunnel.git || true
           git fetch upstream
-          
-          # Check if there are merge conflicts
-          if git ls-files -u | grep -q .; then
-            echo "🔀 Detected merge conflicts, using upstream version..."
-            # Abort the merge
-            git merge --abort || true
-            # Reset to upstream
-            git reset --hard upstream/main
-            git push --force origin main || true
-          fi
+          git reset --hard upstream/main
+          git push --force origin main
