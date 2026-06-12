@@ -1,0 +1,37 @@
+name: Deploy to Cloudflare Workers
+
+permissions:
+  contents: read
+
+on:
+  workflow_run:
+    workflows: ["Sync and Obfuscate Worker"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  deploy_worker:
+    name: Deploy obfuscated worker to Cloudflare
+    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.fork }}
+    
+    steps:
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            _worker.min.js
+            wrangler.toml
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy _worker.min.js --verbose
