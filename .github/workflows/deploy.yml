@@ -4,9 +4,9 @@ permissions:
   contents: read
 
 on:
-  workflow_run:
-    workflows: ["Sync and Obfuscate Worker"]
-    types: [completed]
+  push:
+    paths:
+      - '_worker.min.js'
   workflow_dispatch:
 
 jobs:
