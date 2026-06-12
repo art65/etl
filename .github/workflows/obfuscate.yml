@@ -13,7 +13,6 @@ jobs:
   obfuscate_worker:
     name: Obfuscate and compress worker after sync
     runs-on: ubuntu-latest
-    if: ${{ github.event.repository.fork }}
 
     steps:
       - name: Checkout target repo
@@ -48,7 +47,7 @@ jobs:
           
           if [ -f "_worker.min.js" ]; then
             git add _worker.min.js
-            git commit -m "🔀 Add obfuscated _worker.min.js [skip ci]" || true
+            git commit -m "🔀 Add obfuscated _worker.min.js" || true
             git push origin main || true
             echo "✅ Compressed file committed and pushed"
           else

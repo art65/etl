@@ -13,7 +13,6 @@ jobs:
   deploy_worker:
     name: Deploy obfuscated worker to Cloudflare
     runs-on: ubuntu-latest
-    if: ${{ github.event.repository.fork }}
     
     steps:
       - name: Checkout target repo
