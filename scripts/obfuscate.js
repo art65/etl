@@ -322,11 +322,15 @@ function preprocessChineseWithAST(code) {
         });
       },
 
-      // 更新所有标识符引用（受保护的 MemberExpression property 不替换）
+      // 更新所有标识符引用（受保护的 MemberExpression property 和 ObjectProperty key 不替换）
       Identifier(path) {
         const { node } = path;
         // 跳过受保护的 MemberExpression.property（如 config_JSON.订阅转换配置 中的 订阅转换配置）
         if (path.parentPath && t.isMemberExpression(path.parentPath.node) && path.parentPath.node.property === node && !path.parentPath.node.computed && protectedPropertyNames.has(node.name)) {
+          return;
+        }
+        // 跳过受保护的 ObjectProperty.key（如 {协议类型: ...} 中的 协议类型）
+        if (path.parentPath && t.isObjectProperty(path.parentPath.node) && path.parentPath.node.key === node && !path.parentPath.node.computed && protectedPropertyNames.has(node.name)) {
           return;
         }
         if (chineseVarMap.has(node.name)) {
@@ -337,11 +341,14 @@ function preprocessChineseWithAST(code) {
       }
     });
 
-    // 第二遍扫描：确保所有引用都被替换（同样只跳过受保护的 MemberExpression property）
+    // 第二遍扫描：确保所有引用都被替换（同样跳过受保护的 MemberExpression property 和 ObjectProperty key）
     traverse(ast, {
       Identifier(path) {
         const { node } = path;
         if (path.parentPath && t.isMemberExpression(path.parentPath.node) && path.parentPath.node.property === node && !path.parentPath.node.computed && protectedPropertyNames.has(node.name)) {
+          return;
+        }
+        if (path.parentPath && t.isObjectProperty(path.parentPath.node) && path.parentPath.node.key === node && !path.parentPath.node.computed && protectedPropertyNames.has(node.name)) {
           return;
         }
         if (chineseVarMap.has(node.name)) {
