@@ -27,6 +27,17 @@ const outputFile = args[1] || inputFile.replace('.js', '.min.js');
 const chineseVarMap = new Map();
 let varCounter = 0;
 
+// KV 存储相关变量名 - 这些变量的属性名不能重命名（会被 JSON.stringify 存入 KV）
+const KV_VARIABLE_NAMES = new Set([
+  'config_JSON', '默认配置JSON',
+  'CF_JSON', '初始化CF_JSON',
+  'TG_JSON', '初始化TG_JSON',
+  '日志数组',
+]);
+
+// 受保护的中文属性名集合（预扫描填充）
+const protectedPropertyNames = new Set();
+
 // 统计信息
 const stats = {
   originalSize: 0,
@@ -52,6 +63,68 @@ function getOrCreateNewName(chineseName) {
     chineseVarMap.set(chineseName, newName);
   }
   return chineseVarMap.get(chineseName);
+}
+
+/**
+ * 预扫描：收集 KV 变量上访问的所有中文属性名，加入保护集
+ * 这些属性名会被 JSON.stringify 存入 KV，重命名后会导致读取时 key 不匹配
+ */
+function collectProtectedProperties(ast) {
+  console.log('🔍 Pre-scan: Collecting protected property names from KV variables...\n');
+
+  traverse(ast, {
+    MemberExpression(path) {
+      const { node } = path;
+      // 找到 MemberExpression 链的根对象
+      let rootObj = node.object;
+      while (t.isMemberExpression(rootObj)) {
+        rootObj = rootObj.object;
+      }
+      // 如果根对象是 KV 变量，收集链上所有中文属性名
+      if (t.isIdentifier(rootObj) && KV_VARIABLE_NAMES.has(rootObj.name)) {
+        let current = node;
+        while (t.isMemberExpression(current)) {
+          if (t.isIdentifier(current.property) && isChineseIdentifier(current.property.name) && !current.computed) {
+            protectedPropertyNames.add(current.property.name);
+          }
+          current = current.object;
+        }
+      }
+    },
+    // 也收集 KV 变量对象字面量中的中文 key
+    VariableDeclarator(path) {
+      const { id, init } = path.node;
+      if (t.isIdentifier(id) && KV_VARIABLE_NAMES.has(id.name) && init) {
+        collectChineseKeysFromObject(init);
+      }
+    },
+    // 赋值表达式：config_JSON = { ... }
+    AssignmentExpression(path) {
+      const { left, right } = path.node;
+      if (t.isIdentifier(left) && KV_VARIABLE_NAMES.has(left.name) && t.isObjectExpression(right)) {
+        collectChineseKeysFromObject(right);
+      }
+    },
+  });
+
+  console.log(`   📋 Protected property names (${protectedPropertyNames.size}):`);
+  console.log(`      ${[...protectedPropertyNames].join(', ')}\n`);
+}
+
+/**
+ * 递归收集对象表达式中的所有中文 key
+ */
+function collectChineseKeysFromObject(node) {
+  if (!t.isObjectExpression(node)) return;
+  for (const prop of node.properties) {
+    if (t.isObjectProperty(prop) && t.isIdentifier(prop.key) && isChineseIdentifier(prop.key.name)) {
+      protectedPropertyNames.add(prop.key.name);
+    }
+    // 递归处理嵌套对象
+    if (t.isObjectProperty(prop) && t.isObjectExpression(prop.value)) {
+      collectChineseKeysFromObject(prop.value);
+    }
+  }
 }
 
 /**
@@ -86,6 +159,9 @@ function preprocessChineseWithAST(code) {
         'partialApplication'
       ]
     });
+
+    // 预扫描：收集受保护的属性名
+    collectProtectedProperties(ast);
 
     // 遍历 AST，查找和替换中文标识符
     traverse(ast, {
@@ -161,18 +237,30 @@ function preprocessChineseWithAST(code) {
         });
       },
 
-      // 对象属性
+      // 对象属性 - 受保护的 key 不重命名（KV 存储字段），其余照常重命名
       ObjectProperty(path) {
         const { node } = path;
-        // 处理 shorthand properties 和 key
         if (t.isIdentifier(node.key) && isChineseIdentifier(node.key.name)) {
-          const newName = getOrCreateNewName(node.key.name);
-          const oldName = node.key.name;
-          console.log(`   ✓ Property: ${oldName} → ${newName}`);
-          node.key.name = newName;
-          stats.totalVariablesConverted++;
+          if (protectedPropertyNames.has(node.key.name)) {
+            // 受保护属性：key 保留原名，shorthand 需要展开
+            if (node.shorthand) {
+              const newName = getOrCreateNewName(node.key.name);
+              node.shorthand = false;
+              node.value = t.identifier(newName);
+              console.log(`   ✓ Shorthand expanded (protected): ${node.key.name} → ${node.key.name}: ${newName}`);
+              stats.totalVariablesConverted++;
+            }
+          } else {
+            // 非保护属性：key 可以重命名
+            const newName = getOrCreateNewName(node.key.name);
+            const oldName = node.key.name;
+            node.key.name = newName;
+            console.log(`   ✓ Property: ${oldName} → ${newName}`);
+            stats.totalVariablesConverted++;
+          }
         }
-        if (t.isIdentifier(node.value) && isChineseIdentifier(node.value.name)) {
+        // value 中的标识符引用
+        if (!node.shorthand && t.isIdentifier(node.value) && isChineseIdentifier(node.value.name)) {
           const newName = getOrCreateNewName(node.value.name);
           node.value.name = newName;
         }
@@ -190,17 +278,16 @@ function preprocessChineseWithAST(code) {
         }
       },
 
-      // 方法定义
+      // 方法定义 - 受保护的 key 不重命名
       ClassMethod(path) {
         const { node } = path;
-        if (t.isIdentifier(node.key) && isChineseIdentifier(node.key.name)) {
+        if (t.isIdentifier(node.key) && isChineseIdentifier(node.key.name) && !protectedPropertyNames.has(node.key.name)) {
           const newName = getOrCreateNewName(node.key.name);
           const oldName = node.key.name;
           console.log(`   ✓ Method: ${oldName} → ${newName}`);
           node.key.name = newName;
           stats.totalVariablesConverted++;
         }
-        
         // 处理参数
         node.params.forEach((param) => {
           if (t.isIdentifier(param) && isChineseIdentifier(param.name)) {
@@ -213,17 +300,16 @@ function preprocessChineseWithAST(code) {
         });
       },
 
-      // 对象方法
+      // 对象方法 - 受保护的 key 不重命名
       ObjectMethod(path) {
         const { node } = path;
-        if (t.isIdentifier(node.key) && isChineseIdentifier(node.key.name)) {
+        if (t.isIdentifier(node.key) && isChineseIdentifier(node.key.name) && !protectedPropertyNames.has(node.key.name)) {
           const newName = getOrCreateNewName(node.key.name);
           const oldName = node.key.name;
           console.log(`   ✓ Object method: ${oldName} → ${newName}`);
           node.key.name = newName;
           stats.totalVariablesConverted++;
         }
-        
         // 处理参数
         node.params.forEach((param) => {
           if (t.isIdentifier(param) && isChineseIdentifier(param.name)) {
@@ -236,10 +322,13 @@ function preprocessChineseWithAST(code) {
         });
       },
 
-      // 更新所有标识符引用
+      // 更新所有标识符引用（受保护的 MemberExpression property 不替换）
       Identifier(path) {
         const { node } = path;
-        // 无条件检查所有中文标识符
+        // 跳过受保护的 MemberExpression.property（如 config_JSON.订阅转换配置 中的 订阅转换配置）
+        if (path.parentPath && t.isMemberExpression(path.parentPath.node) && path.parentPath.node.property === node && !path.parentPath.node.computed && protectedPropertyNames.has(node.name)) {
+          return;
+        }
         if (chineseVarMap.has(node.name)) {
           const newName = chineseVarMap.get(node.name);
           node.name = newName;
@@ -248,11 +337,13 @@ function preprocessChineseWithAST(code) {
       }
     });
 
-    // 第二遍扫描：确保所有引用都被替换
-    // （Babel遍历顺序可能导致第一次扫描时某些引用还没被收集）
+    // 第二遍扫描：确保所有引用都被替换（同样只跳过受保护的 MemberExpression property）
     traverse(ast, {
       Identifier(path) {
         const { node } = path;
+        if (path.parentPath && t.isMemberExpression(path.parentPath.node) && path.parentPath.node.property === node && !path.parentPath.node.computed && protectedPropertyNames.has(node.name)) {
+          return;
+        }
         if (chineseVarMap.has(node.name)) {
           node.name = chineseVarMap.get(node.name);
         }
