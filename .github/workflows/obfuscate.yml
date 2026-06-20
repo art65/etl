@@ -47,10 +47,20 @@ jobs:
           git config --local user.name "GitHub Action"
           
           if [ -f "_worker.min.js" ]; then
-            git add _worker.min.js
-            git commit -m "🔀 Add obfuscated _worker.min.js" || true
-            git push origin main || true
-            echo "✅ Compressed file committed and pushed"
+            # 计算新生成文件的 hash
+            NEW_HASH=$(git hash-object _worker.min.js)
+            # 获取已提交文件的 hash（如果存在）
+            OLD_HASH=$(git show HEAD:_worker.min.js 2>/dev/null | git hash-object --stdin 2>/dev/null || echo "")
+            
+            if [ "$NEW_HASH" != "$OLD_HASH" ]; then
+              echo "📦 File changed, committing..."
+              git add _worker.min.js
+              git commit -m "🔀 Add obfuscated _worker.min.js"
+              git push origin main
+              echo "✅ Compressed file committed and pushed"
+            else
+              echo "ℹ️  No changes detected, skipping commit"
+            fi
           else
             echo "⚠️  No compressed file generated"
           fi
