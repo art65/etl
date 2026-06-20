@@ -27,6 +27,35 @@ const outputFile = args[1] || inputFile.replace('.js', '.min.js');
 const chineseVarMap = new Map();
 let varCounter = 0;
 
+// ============================================================
+// 用户配置：强制保留的中文属性名（不会被混淆）
+// ============================================================
+// 这些属性名会被加入保护集，即使出现在 KV 变量上也会保留原名
+// 格式：中文属性名
+const FORCE_PROTECTED_PROPERTIES = [
+  // config.json (默认配置JSON)
+  '协议类型', '传输协议', 'gRPC模式', 'gRPCUserAgent',
+  '跳过证书验证', '启用0RTT', 'TLS分片', '随机路径',
+  'ECH', 'Fingerprint',
+  // ECHConfig
+  'DNS', 'SNI',
+  // SS
+  '加密方式', 'TLS',
+  // 优选订阅生成
+  '本地IP库', '随机IP', '随机数量', '指定端口',
+  'SUB', 'SUBNAME', 'SUBUpdateTime', 'TOKEN',
+  // 订阅转换配置
+  'SUBAPI', 'SUBCONFIG', 'SUBEMOJI', 'SUBLIST',
+  // 反代
+  '启用', '全局', '账号', '白名单', '路径模板',
+  // TG
+  // cf.json
+  'Email', 'GlobalAPIKey', 'AccountID', 'APIToken', 'UsageAPI',
+  // tg.json
+  'BotToken', 'ChatID',
+];
+// ============================================================
+
 // KV 存储相关变量名 - 这些变量的属性名不能重命名（会被 JSON.stringify 存入 KV）
 const KV_VARIABLE_NAMES = new Set([
   'config_JSON', '默认配置JSON',
@@ -35,8 +64,8 @@ const KV_VARIABLE_NAMES = new Set([
   '日志数组',
 ]);
 
-// 受保护的中文属性名集合（预扫描填充）
-const protectedPropertyNames = new Set();
+// 受保护的中文属性名集合（预扫描填充 + 强制保留）
+const protectedPropertyNames = new Set(FORCE_PROTECTED_PROPERTIES);
 
 // 统计信息
 const stats = {
@@ -107,8 +136,17 @@ function collectProtectedProperties(ast) {
     },
   });
 
-  console.log(`   📋 Protected property names (${protectedPropertyNames.size}):`);
-  console.log(`      ${[...protectedPropertyNames].join(', ')}\n`);
+  const forceProtected = FORCE_PROTECTED_PROPERTIES.filter(p => protectedPropertyNames.has(p));
+  const autoProtected = [...protectedPropertyNames].filter(p => !FORCE_PROTECTED_PROPERTIES.includes(p));
+  
+  console.log(`   📋 受保护属性名总计: ${protectedPropertyNames.size}`);
+  if (forceProtected.length > 0) {
+    console.log(`   🔒 强制保留 (${forceProtected.length}): ${forceProtected.join(', ')}`);
+  }
+  if (autoProtected.length > 0) {
+    console.log(`   🔍 预扫描发现 (${autoProtected.length}): ${autoProtected.join(', ')}`);
+  }
+  console.log();
 }
 
 /**
