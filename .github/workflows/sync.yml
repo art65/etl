@@ -35,6 +35,15 @@ jobs:
           # Set test_mode true to run tests instead of the true action!!
           test_mode: false
 
+      - name: Sync status log
+        if: success()
+        run: |
+          if [ "${{ steps.sync.outputs.has_new_commits }}" = "true" ]; then
+            echo "✅ [日志] 成功同步上游最新提交！"
+          else
+            echo "ℹ️ [日志] 上游无新提交，代码已是最新状态。"
+          fi
+
       - name: Sync check
         if: failure()
         run: |
